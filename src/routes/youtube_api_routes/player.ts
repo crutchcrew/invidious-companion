@@ -33,22 +33,47 @@ player.post("/player", async (c) => {
         });
     }
 
-    if (jsonReq.videoId) {
-        if (!validateVideoId(jsonReq.videoId)) {
-            throw new HTTPException(400, {
-                res: new Response("Invalid video ID format."),
-            });
-        }
-        return c.json(
-            await youtubePlayerParsing({
-                innertubeClient,
-                videoId: jsonReq.videoId,
-                config,
-                tokenMinter: tokenMinter!,
-                metrics,
-            }),
-        );
+    if (!jsonReq.videoId) {
+        throw new HTTPException(400, {
+            res: new Response("Missing video ID."),
+        });
     }
+
+    if (!validateVideoId(jsonReq.videoId)) {
+        throw new HTTPException(400, {
+            res: new Response("Invalid video ID format."),
+        });
+    }
+
+    const playerResponse = (await youtubePlayerParsing({
+        innertubeClient,
+        videoId: jsonReq.videoId,
+        config,
+        tokenMinter: tokenMinter!,
+        metrics,
+    })) as {
+        videoDetails?: { isLive?: boolean };
+        streamingData?: { hlsManifestUrl?: string };
+    };
+
+    // Live stream segment URLs expire ~30s after the response that issued
+    // them, so YouTube's HLS manifest is unusable on its own: point the
+    // client at our live HLS route, which keeps re-issuing them.
+    if (
+        playerResponse.videoDetails?.isLive &&
+        playerResponse.streamingData?.hlsManifestUrl
+    ) {
+        return c.json({
+            ...playerResponse,
+            streamingData: {
+                ...playerResponse.streamingData,
+                hlsManifestUrl:
+                    `${config.server.base_path}/api/manifest/hls/id/${jsonReq.videoId}`,
+            },
+        });
+    }
+
+    return c.json(playerResponse);
 });
 
 export default player;

@@ -8,7 +8,7 @@ function callWatchEndpoint(
     videoId: string,
     innertubeClient: Innertube,
     innertubeClientType: string,
-    contentPoToken: string,
+    contentPoToken?: string | undefined,
 ) {
     const watch_endpoint = new NavigationEndpoint({
         watchEndpoint: {
@@ -20,24 +20,23 @@ function callWatchEndpoint(
         },
     });
 
-    return watch_endpoint.call(
-        innertubeClient.actions,
-        {
-            playbackContext: {
-                contentPlaybackContext: {
-                    vis: 0,
-                    splay: false,
-                    lactMilliseconds: "-1",
-                    signatureTimestamp: innertubeClient.session.player
-                        ?.signature_timestamp,
-                },
+    return watch_endpoint.call(innertubeClient.actions, {
+        playbackContext: {
+            contentPlaybackContext: {
+                vis: 0,
+                splay: false,
+                lactMilliseconds: "-1",
+                signatureTimestamp: innertubeClient.session.player
+                    ?.signature_timestamp,
             },
+        },
+        ...(typeof contentPoToken === "string" && {
             serviceIntegrityDimensions: {
                 poToken: contentPoToken,
             },
-            client: innertubeClientType,
-        },
-    );
+        }),
+        client: innertubeClientType,
+    });
 }
 
 export const youtubePlayerReq = async (
@@ -61,6 +60,43 @@ export const youtubePlayerReq = async (
         innertubeClientUsed,
         contentPoToken,
     );
+
+    // Live streams: the WEB client only hands out SABR-gated segment URLs
+    // (every `sq=N` request 403s) and only sometimes an HLS manifest.
+    // ANDROID_VR returns an HLS manifest and plain segment URLs that work
+    // without a PO token, so take the streaming data from it instead.
+    if (
+        youtubePlayerResponse.data.videoDetails?.isLive &&
+        youtubePlayerResponse.data.streamingData
+    ) {
+        try {
+            const liveResponse = await callWatchEndpoint(
+                videoId,
+                innertubeClient,
+                "ANDROID_VR",
+                // The WEB content PO token is bound to the WEB client:
+                // sending it makes the returned segment URLs 403.
+            );
+            const liveStreamingData = liveResponse.data.streamingData;
+            if (liveStreamingData?.adaptiveFormats?.[0]?.url) {
+                youtubePlayerResponse.data.streamingData = liveStreamingData;
+                // Callers detect the client from the response context to
+                // decide about deciphering: ANDROID URLs must be left alone
+                // (deciphering appends the session PO token, which 403s).
+                youtubePlayerResponse.data.responseContext =
+                    liveResponse.data.responseContext;
+            } else {
+                console.log(
+                    "[WARNING] ANDROID_VR returned no usable live streaming data, keeping the WEB client response.",
+                );
+            }
+        } catch (err) {
+            console.log(
+                "[WARNING] Failed to get live streaming data from ANDROID_VR, keeping the WEB client response.",
+                err,
+            );
+        }
+    }
 
     // Check if the first adaptive format URL is undefined, if it is then fallback to multiple YT clients
 

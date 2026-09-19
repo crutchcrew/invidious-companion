@@ -192,6 +192,12 @@ videoPlaybackProxy.get("/", async (c) => {
         }
     }
 
+    // Live segments have no content-length (or other validators): don't send
+    // them as empty strings, clients reject an empty Content-Length.
+    for (const [name, value] of Object.entries(headersForResponse)) {
+        if (value === "") delete headersForResponse[name];
+    }
+
     return new Response(postResponse.body, {
         status: responseStatus,
         statusText: headResponse.statusText,
