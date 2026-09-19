@@ -5,6 +5,7 @@ import { bearerAuth } from "hono/bearer-auth";
 import youtubeApiPlayer from "./youtube_api_routes/player.ts";
 import invidiousRouteLatestVersion from "./invidious_routes/latestVersion.ts";
 import invidiousRouteDashManifest from "./invidious_routes/dashManifest.ts";
+import invidiousRouteLiveHls from "./invidious_routes/liveHls.ts";
 import invidiousCaptionsApi from "./invidious_routes/captions.ts";
 import getDownloadHandler from "./invidious_routes/download.ts";
 import videoPlaybackProxy from "./videoPlaybackProxy.ts";
@@ -39,6 +40,7 @@ export const companionRoutes = (
     // Needs app for app.request in order to call /latest_version endpoint
     app.post("/download", getDownloadHandler(app));
     app.route("/api/manifest/dash/id", invidiousRouteDashManifest);
+    app.route("/api/manifest/hls/id", invidiousRouteLiveHls);
     app.route("/api/v1/captions", invidiousCaptionsApi);
     app.route("/videoplayback", videoPlaybackProxy);
 };
