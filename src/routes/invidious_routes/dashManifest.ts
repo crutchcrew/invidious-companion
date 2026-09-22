@@ -116,11 +116,22 @@ dashManifest.get("/:videoId", async (c) => {
         // video.js only support MP4 not WEBM. Also keep out text/mp4 (live
         // captions): it carries an audio track id, which makes toDash treat
         // the real audio formats (that have none) as broken and drop them.
+        //
+        // Additionally drop codecs Chromium can't play through video.js/VHS,
+        // which otherwise get auto-selected and hard-fail (MEDIA_ERR_DECODE,
+        // "append failed for segment #0") with no fallback:
+        //   - AV1 (av01.*): valid stream, but video.js can't drive it in
+        //     Chrome's MSE. Leaves H.264 (avc1) as the video codec (<=1080p).
+        //   - Dolby ac-3/ec-3 audio: Chrome desktop has no decoder (Safari
+        //     does, which is why it only broke Chromium). Leaves AAC (mp4a).
         videoInfo.streaming_data.adaptive_formats = videoInfo
             .streaming_data.adaptive_formats
             .filter((i) =>
-                i.mime_type.startsWith("audio/mp4") ||
-                i.mime_type.startsWith("video/mp4")
+                (i.mime_type.startsWith("audio/mp4") &&
+                    !i.mime_type.includes("ec-3") &&
+                    !i.mime_type.includes("ac-3")) ||
+                (i.mime_type.startsWith("video/mp4") &&
+                    !i.mime_type.includes("av01"))
             );
 
         const player_response = videoInfo.page[0];
